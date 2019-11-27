@@ -1,0 +1,113 @@
+service:
+  name: serverless-elasticsearch-proxy
+  awsKmsKeyArn: ${file(./config.${self:provider.stage}.yaml):aws-kms-key-arn-secrets}
+
+plugins:
+  - serverless-webpack
+
+custom:
+  aws_account_id: ${file(./config.${self:provider.stage}.yaml):aws-account-id}
+  webpack:
+    webpackConfig: ./webpack.config.js
+    includeModules: true
+    packager: yarn
+    packagerOptions:
+      scripts:
+        - rm -rf node_modules/aws-sdk
+  cwe_rule_name_cleanup_fuel_prices: ${self:service.name}-cleanup-fuel-prices
+  sqs_queue_name_elasticsearch_proxy: ${self:service.name}
+  sqs_queue_arn_elasticsearch_proxy: arn:aws:sqs:${self:provider.region}:${self:custom.aws_account_id}:${self:custom.sqs_queue_name_elasticsearch_proxy}
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  stage: ${opt:stage, 'dev'}
+  profile: ${opt:profile, 'dev'}
+  region: us-east-1
+  environment:
+    # NOTE: this is useful for local invocations and has no affect in deployed environments
+    AWS_PROFILE: ${self:provider.profile}
+    ELASTICSEARCH_HOST: ${file(./config.${self:provider.stage}.yaml):elasticsearch-host}
+    ELASTICSEARCH_HTTPAUTH_ENCRYPTED: ${file(./config.${self:provider.stage}.yaml):elasticsearch-httpauth}
+  stackTags:
+    Business Unit: "Misc"
+    Team: "Eng/Core-Services"
+  vpc: ${file(./config.vpc.${self:provider.stage}.yaml)}
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - sqs:*
+      Resource:
+        - ${self:custom.sqs_queue_arn_elasticsearch_proxy}
+
+package:
+  individually: true
+  exclude:
+    - config.*.yaml
+
+functions:
+  elasticsearchProxy:
+    description: Reads from the '${self:custom.sqs_queue_name_elasticsearch_proxy}' SQS queue and writes to the ElasticSearch index
+    handler: handlers/elasticsearch-proxy.handler
+    memorySize: 128
+    timeout: 10
+    reservedConcurrency: 10
+    awsKmsKeyArn: ${file(./config.${self:provider.stage}.yaml):aws-kms-key-arn-secrets}
+    environment:
+      ELASTICSEARCH_HOST: ${file(./config.${self:provider.stage}.yaml):elasticsearch-host}
+      ELASTICSEARCH_HTTPAUTH_ENCRYPTED: ${file(./config.${self:provider.stage}.yaml):elasticsearch-httpauth}
+    events:
+      - sqs:
+          batchSize: 1
+          arn: ${self:custom.sqs_queue_arn_elasticsearch_proxy}
+
+resources:
+  Resources:
+    SecretsKMSKey:
+      Type: AWS::KMS::Key
+      Properties:
+        Description: Key for secrets encryption/decryption
+        KeyPolicy:
+          Version: "2012-10-17"
+          Id: ${self:service.name}-secrets
+          Statement:
+            - Sid: Enable IAM User Permissions
+              Effect: Allow
+              Principal:
+                AWS: arn:aws:iam::${self:custom.aws_account_id}:root
+              Action: kms:*
+              Resource: "*"
+            - Sid: Allow administration of the key
+              Effect: Allow
+              Principal:
+                AWS: ${file(./config.${self:provider.stage}.yaml):kms-admins}
+              Action:
+                - kms:*
+              Resource: "*"
+            - Sid: Allow viewing of the key
+              Effect: Allow
+              Principal:
+                AWS: ${file(./config.${self:provider.stage}.yaml):kms-viewers}
+              Action:
+                - kms:Describe*
+              Resource: "*"
+            - Sid: Allow use of the key
+              Effect: Allow
+              Principal:
+                AWS:
+                  - Fn::GetAtt:
+                    - IamRoleLambdaExecution
+                    - Arn
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: "*"
+    SecretsKMSKeyAlias:
+      Type: AWS::KMS::Alias
+      Properties:
+        AliasName: alias/${self:service.name}-secrets
+        TargetKeyId:
+          Ref: SecretsKMSKey

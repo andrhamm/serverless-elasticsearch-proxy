@@ -1,0 +1,33 @@
+{
+  "name": "serverless-elasticsearch-proxy",
+  "version": "1.0.0",
+  "description": "A Serverless application that reads messages from SQS and writes them to an ElasticSearch index",
+  "main": "handler.js",
+  "scripts": {
+    "preinstall": "node -e \"if(process.env.npm_execpath.indexOf('yarn') === -1) throw new Error('You must use Yarn to install, not NPM')\""
+  },
+  "author": "Andrew Hammond",
+  "license": "none",
+  "dependencies": {
+    "async-retry": "^1.2.3",
+    "aws-sdk": "^2.564.0",
+    "elasticsearch": "^16.5.0",
+    "p-map": "^2.0.0"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.1.0",
+    "babel-core": "^6.26.3",
+    "babel-eslint": "^8.2.3",
+    "babel-loader": "^7.1.4",
+    "babel-plugin-source-map-support": "^2.0.1",
+    "babel-plugin-transform-object-rest-spread": "^6.26.0",
+    "babel-preset-env": "^1.7.0",
+    "eslint": "^4.19.1",
+    "eslint-config-airbnb": "^18.0.1",
+    "serverless": "^1.57.0",
+    "serverless-webpack": "^5.2.0",
+    "webpack": "^4.8.3",
+    "webpack-node-externals": "^1.7.2"
+  },
+  "private": true
+}
